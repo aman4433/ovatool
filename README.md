@@ -18,10 +18,9 @@ ovatool init     — generate .env.template and optionally install pvsadm
 | Requirement | Notes |
 |---|---|
 | ppc64le machine | LPAR or VM — the qcow2→OVA conversion mounts image partitions, so the architecture must match |
-| `qemu-img` | `dnf install -y qemu-img` |
-| `cloud-utils-growpart` | `dnf install -y cloud-utils-growpart` |
+| `qemu-img` | Installed by `ovatool init --install-deps` or `dnf install -y qemu-img` |
+| `cloud-utils-growpart` | Installed by `ovatool init --install-deps` or `dnf install -y cloud-utils-growpart` |
 | `pvsadm` | Installed by `ovatool init --install-pvsadm` |
-| `ibmcloud` CLI | Required for COS preflight checks |
 | `powervc-image` CLI | Required only on the PowerVC node for PowerVC imports |
 | IBM Cloud API key | For pvsadm upload/import operations |
 | RHN credentials | Required only for RHEL image builds |
@@ -52,8 +51,8 @@ go build -o ovatool .
 ## Quick Start
 
 ```bash
-# 1. Generate config template
-ovatool init --install-pvsadm
+# 1. Install all dependencies and generate config template
+ovatool init --install-deps --install-pvsadm
 
 # 2. Fill in credentials
 cp .env.template .env
@@ -92,7 +91,7 @@ vi .env             # fill in values
 | `COS_SECRET_KEY` | For private import | — | COS HMAC secret key |
 | `PVS_WORKSPACE_NAME` | For PVS import | — | PowerVS workspace name |
 | `PVS_STORAGE_TYPE` | No | `tier1` | `tier1` or `tier3` |
-| `POWERVC_HOST` | For PowerVC | — | PowerVC host |
+| `POWERVC_HOST` | For PowerVC | — | PowerVC hostname or IP only — no scheme or port (e.g. `mypowervc.example.com`) |
 | `POWERVC_USERNAME` | For PowerVC | — | PowerVC username |
 | `POWERVC_PASSWORD` | For PowerVC | — | PowerVC password |
 | `POWERVC_PROJECT` | No | `ibm-default` | PowerVC project |
@@ -135,10 +134,25 @@ ovatool run \
 ### `ovatool build`
 
 ```bash
+# Basic build
 ovatool build \
   --dist centos \
   --image-url ./CentOS-Stream-GenericCloud-9-latest.ppc64le.qcow2 \
   --version 9
+
+# Fix DNS if pvsadm prep script fails to reach external hosts (9.9.9.9 blocked)
+ovatool build \
+  --dist centos \
+  --image-url ./CentOS-Stream-GenericCloud-9-latest.ppc64le.qcow2 \
+  --version 9 \
+  --nameserver 9.3.1.200
+
+# Use a fully custom prep template
+ovatool build \
+  --dist centos \
+  --image-url ./CentOS-Stream-GenericCloud-9-latest.ppc64le.qcow2 \
+  --version 9 \
+  --prep-template ./image-prep.template
 ```
 
 ### `ovatool upload`
@@ -188,13 +202,20 @@ Pass `--image-name` to override with a custom name.
 
 ---
 
-## Idempotency
+## Preflight Checks
 
-ovatool runs a preflight check before upload to assert that no object with
-the same name already exists in the COS bucket. The pipeline will exit early
-with a clear error rather than failing 30 minutes into a build.
+**Build stage** — ovatool checks for `qemu-img` and `growpart` before invoking pvsadm. If either is missing it exits immediately with a clear install hint rather than failing inside the conversion:
 
-Pass `--skip-preflight` to the `upload` command to bypass this check.
+```
+preflight failed: missing required system tools
+  ✗ qemu-img not found
+    required by: build stage (qcow2 → raw conversion)
+    fix: dnf install -y qemu-img
+
+  or install all at once: ovatool init --install-deps
+```
+
+**Upload stage** — ovatool checks that no object with the same name already exists in the COS bucket before starting a potentially long upload. Pass `--skip-preflight` to bypass this check.
 
 ---
 
@@ -238,6 +259,7 @@ pipeline {
           curl -sL https://github.com/ppc64le-cloud/ovatool/releases/download/v0.1.0/ovatool-linux-ppc64le \
             -o /usr/local/bin/ovatool
           chmod +x /usr/local/bin/ovatool
+          ovatool init --install-deps --install-pvsadm
         '''
       }
     }
@@ -274,6 +296,7 @@ ovatool/
 │   └── run.go           # full pipeline orchestrator
 ├── pkg/
 │   ├── config/          # env loading, .env template
+│   ├── deps/            # system dependency checks and installation
 │   ├── image/           # dist types, naming, target parsing
 │   ├── pvsadm/          # pvsadm binary wrapper
 │   ├── powervc/         # powervc-image binary wrapper
