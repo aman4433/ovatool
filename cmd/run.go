@@ -14,20 +14,22 @@ import (
 )
 
 var (
-	runDist         string
-	runImageURL     string
-	runImageName    string
-	runVersion      string
-	runTargets      string
-	runRHNUser      string
-	runRHNPass      string
-	runOSPass       string
-	runSkipOSPass   bool
-	runImageSize    int
-	runTargetDisk   int
-	runOSType       string
-	runPublicBucket bool
-	runObject       string
+	runDist           string
+	runImageURL       string
+	runImageName      string
+	runVersion        string
+	runTargets        string
+	runRHNUser        string
+	runRHNPass        string
+	runOSPass         string
+	runSkipOSPass     bool
+	runImageSize      int
+	runTargetDisk     int
+	runOSType         string
+	runPublicBucket   bool
+	runObject         string
+	runPrepTemplate   string
+	runNameserver     string
 )
 
 var runCmd = &cobra.Command{
@@ -92,6 +94,8 @@ func init() {
 	runCmd.Flags().StringVar(&runOSType, "os-type", "rhel", "OS type for PowerVC import: rhel or coreos")
 	runCmd.Flags().BoolVar(&runPublicBucket, "public-bucket", false, "source bucket is public (e.g. RHCOS prebuilt images)")
 	runCmd.Flags().StringVar(&runObject, "object", "", "COS object name (for import-only runs where image is already in COS)")
+	runCmd.Flags().StringVar(&runPrepTemplate, "prep-template", "", "path to a custom pvsadm prep script template (build stage)")
+	runCmd.Flags().StringVar(&runNameserver, "nameserver", "", "DNS nameserver to inject into the prep template (replaces hardcoded 9.9.9.9)")
 
 	runCmd.MarkFlagRequired("dist")
 }
@@ -137,6 +141,8 @@ func runPipeline() error {
 			buildRHNPass = runRHNPass
 			buildOSPass = runOSPass
 			buildSkipOSPass = runSkipOSPass
+			buildPrepTemplate = runPrepTemplate
+			buildNameserver = runNameserver
 
 			if err := runBuild(); err != nil {
 				return fmt.Errorf("build stage: %w", err)

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"go.uber.org/zap"
 )
@@ -78,16 +79,17 @@ func Install(log *zap.Logger, version string) error {
 
 // BuildOptions holds parameters for the qcow2→OVA conversion.
 type BuildOptions struct {
-	ImageName   string
-	ImageURL    string
-	Dist        string // rhel, centos, coreos
-	ImageSizGB  int    // resultant OVA size, default 11
-	TargetDisk  int    // target disk size, default 120
-	RHNUser     string
-	RHNPassword string
-	OSPassword  string
-	SkipOSPass  bool
-	TempDir     string
+	ImageName    string
+	ImageURL     string
+	Dist         string // rhel, centos, coreos
+	ImageSizGB   int    // resultant OVA size, default 11
+	TargetDisk   int    // target disk size, default 120
+	RHNUser      string
+	RHNPassword  string
+	OSPassword   string
+	SkipOSPass   bool
+	TempDir      string
+	PrepTemplate string // path to custom prep script (empty = pvsadm default)
 }
 
 // Build runs `pvsadm image qcow2ova` and returns the path to the produced
@@ -118,6 +120,9 @@ func (c *Client) Build(opts BuildOptions) (string, error) {
 	}
 	if opts.TempDir != "" {
 		args = append(args, "--temp-dir", opts.TempDir)
+	}
+	if opts.PrepTemplate != "" {
+		args = append(args, "--prep-template", opts.PrepTemplate)
 	}
 
 	c.log.Info("starting qcow2→OVA conversion",
@@ -225,6 +230,38 @@ func (c *Client) Import(opts ImportOptions) error {
 	}
 	c.log.Info("PowerVS import complete", zap.String("image", opts.PVSImageName))
 	return nil
+}
+
+// PatchedPrepTemplate fetches the default pvsadm prep template, replaces the
+// hardcoded 9.9.9.9 nameserver with the given one, writes it to a temp file,
+// and returns its path. The caller must call cleanup() when the build is done.
+func (c *Client) PatchedPrepTemplate(nameserver string) (path string, cleanup func(), err error) {
+	out, err := exec.Command(c.binaryPath, "image", "qcow2ova", "--prep-template-default").Output()
+	if err != nil {
+		return "", nil, fmt.Errorf("fetching default prep template: %w", err)
+	}
+
+	patched := strings.ReplaceAll(string(out),
+		`echo "nameserver 9.9.9.9"`,
+		fmt.Sprintf(`echo "nameserver %s"`, nameserver),
+	)
+
+	f, err := os.CreateTemp("", "ovatool-prep-*.sh")
+	if err != nil {
+		return "", nil, fmt.Errorf("creating temp prep template: %w", err)
+	}
+	if _, err := f.WriteString(patched); err != nil {
+		f.Close()
+		os.Remove(f.Name())
+		return "", nil, fmt.Errorf("writing prep template: %w", err)
+	}
+	f.Close()
+
+	c.log.Info("generated patched prep template",
+		zap.String("nameserver", nameserver),
+		zap.String("path", f.Name()),
+	)
+	return f.Name(), func() { os.Remove(f.Name()) }, nil
 }
 
 // run executes pvsadm with the given args, streaming stdout/stderr to the

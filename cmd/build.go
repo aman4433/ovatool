@@ -12,16 +12,18 @@ import (
 )
 
 var (
-	buildDist       string
-	buildImageURL   string
-	buildImageName  string
-	buildImageSize  int
-	buildTargetDisk int
-	buildRHNUser    string
-	buildRHNPass    string
-	buildOSPass     string
-	buildSkipOSPass bool
-	buildVersion    string
+	buildDist         string
+	buildImageURL     string
+	buildImageName    string
+	buildImageSize    int
+	buildTargetDisk   int
+	buildRHNUser      string
+	buildRHNPass      string
+	buildOSPass       string
+	buildSkipOSPass   bool
+	buildVersion      string
+	buildPrepTemplate string
+	buildNameserver   string
 )
 
 var buildCmd = &cobra.Command{
@@ -60,6 +62,8 @@ func init() {
 	buildCmd.Flags().StringVar(&buildRHNPass, "rhn-password", "", "Red Hat subscription password (required for --dist rhel)")
 	buildCmd.Flags().StringVar(&buildOSPass, "os-password", "", "root user password (auto-generated if omitted)")
 	buildCmd.Flags().BoolVar(&buildSkipOSPass, "skip-os-password", false, "do not set a root password (cloud/key-based access only)")
+	buildCmd.Flags().StringVar(&buildPrepTemplate, "prep-template", "", "path to a custom pvsadm prep script template")
+	buildCmd.Flags().StringVar(&buildNameserver, "nameserver", "", "DNS nameserver to inject into the prep template (replaces hardcoded 9.9.9.9)")
 
 	buildCmd.MarkFlagRequired("dist")
 	buildCmd.MarkFlagRequired("image-url")
@@ -98,17 +102,29 @@ func runBuild() error {
 		return err
 	}
 
+	prepTemplate := buildPrepTemplate
+	if prepTemplate == "" && buildNameserver != "" {
+		path, cleanup, err := client.PatchedPrepTemplate(buildNameserver)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+		prepTemplate = path
+		logger.Info("using auto-patched prep template", zap.String("nameserver", buildNameserver))
+	}
+
 	outPath, err := client.Build(pvsadm.BuildOptions{
-		ImageName:   imageName,
-		ImageURL:    buildImageURL,
-		Dist:        string(dist),
-		ImageSizGB:  buildImageSize,
-		TargetDisk:  buildTargetDisk,
-		RHNUser:     buildRHNUser,
-		RHNPassword: buildRHNPass,
-		OSPassword:  buildOSPass,
-		SkipOSPass:  buildSkipOSPass,
-		TempDir:     cfg.TempDir,
+		ImageName:    imageName,
+		ImageURL:     buildImageURL,
+		Dist:         string(dist),
+		ImageSizGB:   buildImageSize,
+		TargetDisk:   buildTargetDisk,
+		RHNUser:      buildRHNUser,
+		RHNPassword:  buildRHNPass,
+		OSPassword:   buildOSPass,
+		SkipOSPass:   buildSkipOSPass,
+		TempDir:      cfg.TempDir,
+		PrepTemplate: prepTemplate,
 	})
 	if err != nil {
 		return err
