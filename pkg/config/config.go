@@ -60,6 +60,8 @@ PVS_WORKSPACE_NAME=
 PVS_STORAGE_TYPE=tier1
 
 # ── PowerVC ────────────────────────────────────────────────────────────────────
+# Hostname or IP only — no scheme or port (e.g. mypowervc.com)
+# ovatool builds the full auth URL as: https://<POWERVC_HOST>:5000/v3/
 POWERVC_HOST=
 POWERVC_USERNAME=
 POWERVC_PASSWORD=

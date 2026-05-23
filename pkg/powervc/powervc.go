@@ -61,12 +61,17 @@ func (c *Client) Import(opts ImportOptions) error {
 	cmd := exec.Command("powervc-image", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	// powervc-image picks up credentials from OS_USERNAME / OS_PASSWORD and
-	// the sourced powervcrc. We inject them explicitly so the user doesn't
-	// need to source anything manually.
+	// Inject the full set of OpenStack env vars that powervcrc normally
+	// provides, so the user doesn't need to source anything manually.
 	cmd.Env = append(os.Environ(),
+		"OS_AUTH_URL=https://"+c.host+":5000/v3/",
 		"OS_USERNAME="+c.username,
 		"OS_PASSWORD="+c.password,
+		"OS_PROJECT_NAME="+c.project,
+		"OS_USER_DOMAIN_NAME=Default",
+		"OS_PROJECT_DOMAIN_NAME=Default",
+		"OS_IDENTITY_API_VERSION=3",
+		"OS_IMAGE_API_VERSION=2",
 	)
 
 	if err := cmd.Run(); err != nil {
