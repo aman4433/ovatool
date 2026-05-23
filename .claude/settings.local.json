@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -rn \"func New\" /Users/amanshrivastava/go/pkg/mod/github.com/\\\\!i\\\\!b\\\\!m/ibm-cos-sdk-go@v1.10.0/aws/credentials/ --include=\"*.go\" | grep -v \"_test.go\")",
+      "Read(//Users/amanshrivastava/go/pkg/mod/github.com/!i!b!m/ibm-cos-sdk-go@v1.10.0/aws/credentials/**)",
+      "Bash(go build *)"
+    ]
+  }
+}
