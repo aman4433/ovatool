@@ -10,3 +10,4 @@ ovatool
 
 # Go
 vendor/
+.claude/
