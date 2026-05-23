@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
+	"github.com/ppc64le-cloud/ovatool/pkg/deps"
 	img "github.com/ppc64le-cloud/ovatool/pkg/image"
 	"github.com/ppc64le-cloud/ovatool/pkg/pvsadm"
 )
@@ -65,6 +66,10 @@ func init() {
 }
 
 func runBuild() error {
+	if missing := deps.Missing(deps.BuildDeps); len(missing) > 0 {
+		return deps.PreflightError(missing)
+	}
+
 	dist, err := img.ParseDist(buildDist)
 	if err != nil {
 		return err

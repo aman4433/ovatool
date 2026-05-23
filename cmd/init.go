@@ -7,10 +7,12 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/ppc64le-cloud/ovatool/pkg/config"
+	"github.com/ppc64le-cloud/ovatool/pkg/deps"
 	"github.com/ppc64le-cloud/ovatool/pkg/pvsadm"
 )
 
 var installPVSADM bool
+var installDeps bool
 var pvsadmVersion string
 
 var initCmd = &cobra.Command{
@@ -25,9 +27,11 @@ configuration keys and their defaults. Copy it to .env and fill in your values:
   cp .env.template .env
   vi .env
 
-Optionally, pass --install-pvsadm to download and install the pvsadm binary:
+Pass --install-deps to install required system tools (qemu-img, growpart, curl).
+Pass --install-pvsadm to download and install the pvsadm binary.
+Both flags are idempotent — safe to re-run and use as a Jenkins setup step:
 
-  ovatool init --install-pvsadm --pvsadm-version v0.1.15`,
+  ovatool init --install-deps --install-pvsadm`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Minimal logger for init (no .env loaded yet).
 		log, _ := zap.NewDevelopment()
@@ -36,6 +40,15 @@ Optionally, pass --install-pvsadm to download and install the pvsadm binary:
 			return err
 		}
 		fmt.Println("✔ wrote .env.template — copy to .env and fill in your values")
+
+		// Install system deps before pvsadm — curl is needed to download it.
+		if installDeps {
+			toInstall := append(deps.BuildDeps, deps.CurlDep)
+			if err := deps.Install(log, toInstall); err != nil {
+				return fmt.Errorf("installing system dependencies: %w", err)
+			}
+			fmt.Println("✔ system dependencies installed (qemu-img, growpart, curl)")
+		}
 
 		if installPVSADM {
 			if err := pvsadm.Install(log, pvsadmVersion); err != nil {
@@ -53,6 +66,7 @@ Optionally, pass --install-pvsadm to download and install the pvsadm binary:
 }
 
 func init() {
+	initCmd.Flags().BoolVar(&installDeps, "install-deps", false, "install required system tools: qemu-img, growpart, curl")
 	initCmd.Flags().BoolVar(&installPVSADM, "install-pvsadm", false, "download and install pvsadm")
 	initCmd.Flags().StringVar(&pvsadmVersion, "pvsadm-version", "v0.1.15", "pvsadm version to install")
 }
