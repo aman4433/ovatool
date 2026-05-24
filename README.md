@@ -29,22 +29,17 @@ ovatool init     — generate .env.template and optionally install pvsadm
 
 ## Installation
 
-Download the binary from [Releases](https://github.com/ppc64le-cloud/ovatool/releases):
+Build from source on a ppc64le machine (Go 1.21+ required):
 
 ```bash
-curl -sL https://github.com/ppc64le-cloud/ovatool/releases/download/v0.1.0/ovatool-linux-ppc64le \
-  -o /usr/local/bin/ovatool
-chmod +x /usr/local/bin/ovatool
+git clone https://github.com/aman4433/ovatool
+cd ovatool
+CGO_ENABLED=0 go build -o ovatool .
+sudo mv ovatool /usr/local/bin/
 ovatool --help
 ```
 
-Or build from source:
-
-```bash
-git clone https://github.com/ppc64le-cloud/ovatool
-cd ovatool
-go build -o ovatool .
-```
+> Pre-built binaries will be available on the [Releases](https://github.com/aman4433/ovatool/releases) page once a release is published.
 
 ---
 

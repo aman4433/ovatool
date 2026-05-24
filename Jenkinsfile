@@ -12,7 +12,7 @@
 //   powervc-password   — PowerVC user password (PowerVC imports only)
 
 pipeline {
-  agent { label 'ppc64le' }
+  agent any
 
   parameters {
 
@@ -175,9 +175,8 @@ pipeline {
     stage('Setup') {
       steps {
         sh '''
-          curl -sL https://github.com/aman4433/ovatool/releases/download/v0.1.0/ovatool-linux-ppc64le \
-            -o /usr/local/bin/ovatool
-          chmod +x /usr/local/bin/ovatool
+          git clone https://github.com/aman4433/ovatool.git /tmp/ovatool-src
+          cd /tmp/ovatool-src && CGO_ENABLED=0 go build -o /usr/local/bin/ovatool .
           ovatool init --install-deps --install-pvsadm
         '''
       }
