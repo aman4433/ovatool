@@ -103,51 +103,72 @@ vi .env             # fill in values
 
 ## Usage
 
-### `ovatool run` — full pipeline
+ovatool is designed to be flexible — you can run the full pipeline end-to-end
+with a single command, or execute each stage independently depending on your
+workflow. The sections below cover every supported combination.
+
+---
+
+### Stage overview
+
+| Stage | Command | What it does |
+|---|---|---|
+| Build | `ovatool build` | Converts a `.qcow2` image to `.ova.gz` format using pvsadm |
+| Upload | `ovatool upload` | Pushes a local `.ova.gz` to an IBM Cloud Object Storage bucket |
+| Import (PowerVS) | `ovatool import --target pvs` | Imports the OVA from COS into a PowerVS workspace |
+| Import (PowerVC) | `ovatool import --target powervc` | Imports a local OVA into PowerVC (must run on the PowerVC node) |
+| Full pipeline | `ovatool run` | Orchestrates any combination of the above stages in one command |
+
+---
+
+### 1. Build only
+
+Use this when you want to convert a cloud image to OVA format and handle the
+upload and import steps separately later.
+
+The `--image-url` flag accepts either a **local file path** or a **direct
+HTTPS URL**. When a URL is provided, pvsadm downloads the image automatically
+before conversion — no separate download step is needed.
 
 ```bash
-# CentOS — full pipeline
-ovatool run \
-  --dist centos \
-  --version 9 \
-  --image-url ./CentOS-Stream-GenericCloud-9-latest.ppc64le.qcow2 \
-  --target all
-
-# RHEL — build and upload only
-ovatool run \
-  --dist rhel \
-  --version 9.5 \
-  --image-url ./rhel-9.5-ppc64le-kvm.qcow2 \
-  --rhn-user user@example.com \
-  --rhn-password secret \
-  --target build,upload
-
-# RHCOS — import only from public bucket (no build needed)
-ovatool run \
-  --dist rhcos \
-  --image-name rhcos-419-23052025 \
-  --object rhcos-419-ppc64le-powervs.ova.gz \
-  --public-bucket \
-  --target import-pvs
-```
-
-### `ovatool build`
-
-```bash
-# Basic build
+# Using a local file
 ovatool build \
   --dist centos \
   --image-url ./CentOS-Stream-GenericCloud-9-latest.ppc64le.qcow2 \
   --version 9
 
-# Fix DNS if pvsadm prep script fails to reach external hosts (9.9.9.9 blocked)
+# Using a direct URL (pvsadm downloads the image before converting)
+ovatool build \
+  --dist centos \
+  --image-url https://cloud.centos.org/centos/9-stream/ppc64le/images/CentOS-Stream-GenericCloud-9-latest.ppc64le.qcow2 \
+  --version 9
+```
+
+For RHEL images, Red Hat subscription credentials are required:
+
+```bash
+ovatool build \
+  --dist rhel \
+  --image-url ./rhel-9.5-ppc64le-kvm.qcow2 \
+  --version 9.5 \
+  --rhn-user user@example.com \
+  --rhn-password secret
+```
+
+If the build fails because the pvsadm prep script cannot reach `9.9.9.9`
+(the default DNS hardcoded by pvsadm), provide your VM's working nameserver:
+
+```bash
 ovatool build \
   --dist centos \
   --image-url ./CentOS-Stream-GenericCloud-9-latest.ppc64le.qcow2 \
   --version 9 \
   --nameserver 9.3.1.200
+```
 
-# Use a fully custom prep template
+To use a fully customised prep script instead of the pvsadm default:
+
+```bash
 ovatool build \
   --dist centos \
   --image-url ./CentOS-Stream-GenericCloud-9-latest.ppc64le.qcow2 \
@@ -155,35 +176,146 @@ ovatool build \
   --prep-template ./image-prep.template
 ```
 
-### `ovatool upload`
+---
+
+### 2. Upload only
+
+Use this when the OVA has already been built and you only need to push it to
+IBM Cloud Object Storage. A preflight check ensures no object with the same
+name already exists in the bucket before the upload begins.
 
 ```bash
-ovatool upload --file centos-9-23052025.ova.gz
+ovatool upload --file centos-9-23052026.ova.gz
 ```
 
-### `ovatool import`
+---
+
+### 3. Import only
+
+#### Import into PowerVS
+
+Use this when the OVA is already in your COS bucket (either uploaded
+previously or sourced from a public bucket such as RHCOS prebuilt images).
 
 ```bash
-# PowerVS
-ovatool import \
-  --target pvs \
-  --object centos-9-23052025.ova.gz \
-  --pvs-image-name centos-9-23052025
+ovatool import --target pvs \
+  --object centos-9-23052026.ova.gz \
+  --pvs-image-name centos-9-23052026
+```
 
-# PowerVC
-ovatool import \
-  --target powervc \
-  --image-path ./centos-9-23052025.ova.gz \
-  --pvc-image-name centos-9-23052025 \
+To import from the public RHCOS bucket (no COS credentials required):
+
+```bash
+ovatool import --target pvs \
+  --object rhcos-419-ppc64le-powervs.ova.gz \
+  --pvs-image-name rhcos-419-23052026 \
+  --public-bucket
+```
+
+#### Import into PowerVC
+
+PowerVC imports require the `powervc-image` CLI, which is only available on
+the PowerVC management node. Copy the OVA and the ovatool binary to that node
+and run the import there.
+
+```bash
+# On the PowerVC node
+ovatool import --target powervc \
+  --image-path /root/centos-9-23052026.ova.gz \
+  --pvc-image-name centos-9-23052026 \
   --os-type rhel
+```
 
-# Both
-ovatool import \
-  --target all \
-  --object centos-9-23052025.ova.gz \
-  --pvs-image-name centos-9-23052025 \
-  --image-path ./centos-9-23052025.ova.gz \
-  --pvc-image-name centos-9-23052025
+#### Import into both PowerVS and PowerVC simultaneously
+
+```bash
+ovatool import --target all \
+  --object centos-9-23052026.ova.gz \
+  --pvs-image-name centos-9-23052026 \
+  --image-path ./centos-9-23052026.ova.gz \
+  --pvc-image-name centos-9-23052026
+```
+
+---
+
+### 4. Build and upload (import later)
+
+Use this when you want to prepare and stage the image in COS, but defer the
+import to a separate step or a separate node.
+
+```bash
+ovatool run \
+  --dist centos \
+  --version 9 \
+  --image-url ./CentOS-Stream-GenericCloud-9-latest.ppc64le.qcow2 \
+  --target build,upload
+```
+
+---
+
+### 5. Upload and import (image already built)
+
+Use this when the OVA file already exists locally and you want to upload it
+to COS and immediately import it into PowerVS in one step.
+
+```bash
+ovatool run \
+  --dist centos \
+  --image-name centos-9-23052026 \
+  --target upload,import-pvs
+```
+
+---
+
+### 6. Full pipeline — build, upload, and import
+
+Runs all stages in sequence: converts the qcow2 image to OVA, uploads it to
+COS, and imports it into PowerVS and PowerVC.
+
+```bash
+ovatool run \
+  --dist centos \
+  --version 9 \
+  --image-url ./CentOS-Stream-GenericCloud-9-latest.ppc64le.qcow2 \
+  --target all
+```
+
+For RHEL with subscription credentials:
+
+```bash
+ovatool run \
+  --dist rhel \
+  --version 9.5 \
+  --image-url ./rhel-9.5-ppc64le-kvm.qcow2 \
+  --rhn-user user@example.com \
+  --rhn-password secret \
+  --target all
+```
+
+---
+
+### 7. RHCOS — fetch and import (no build required)
+
+RHCOS OVA images are prebuilt by Red Hat and published to a public COS bucket.
+There is no build step — use `ovatool fetch` to download the image, then
+import it directly.
+
+```bash
+# Download the latest RHCOS OVA for OpenShift 4.19
+ovatool fetch --ocp-version 4.19
+
+# Import into PowerVS from the public bucket
+ovatool import --target pvs \
+  --object rhcos-419-ppc64le-powervs.ova.gz \
+  --pvs-image-name rhcos-419-23052026 \
+  --public-bucket
+```
+
+To list all available RHCOS releases before downloading:
+
+```bash
+ovatool fetch --list
+ovatool fetch --list --ocp-version 4.19
 ```
 
 ---
