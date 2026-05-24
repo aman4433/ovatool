@@ -374,22 +374,31 @@ grey in the UI.
 
 ### Parameters
 
-| Parameter | Type | Description |
-|---|---|---|
-| `DIST` | Choice | `centos`, `rhel`, or `rhcos` |
-| `VERSION` | String | Image version (e.g. `9`, `9.5`, `4.19`) — used for auto-naming |
-| `IMAGE_NAME` | String | Override the auto-generated image name |
-| `IMAGE_URL` | String | URL or local agent path to the source qcow2 |
-| `IMAGE_COS_OBJECT` | String | COS object key of a qcow2 already in COS (alternative to `IMAGE_URL`) |
-| `IMAGE_COS_BUCKET` | String | COS bucket for the source qcow2 (defaults to `COS_BUCKET`) |
-| `NAMESERVER` | String | DNS nameserver to inject if `9.9.9.9` is unreachable from the build agent |
-| `BUILD` | Boolean | Convert qcow2 → OVA (auto-skipped for rhcos) |
-| `UPLOAD` | Boolean | Upload OVA to COS |
-| `IMPORT_PVS` | Boolean | Import from COS into PowerVS |
-| `IMPORT_POWERVC` | Boolean | Copy OVA to PowerVC node via SSH and import it |
-| `PVS_IMAGE_NAME` | String | Name to register in PowerVS (defaults to `IMAGE_NAME`) |
-| `PVC_IMAGE_NAME` | String | Name to register in PowerVC (defaults to `IMAGE_NAME`) |
-| `POWERVC_NODE` | String | Hostname or IP of the PowerVC management node |
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `DIST` | Choice | `centos` | `centos`, `rhel`, `rhcos`, or `other` (fill in `DIST_OTHER`) |
+| `DIST_OTHER` | String | — | Custom distribution name when `DIST` is set to `other` (e.g. `ubuntu`, `sles`) |
+| `VERSION` | String | — | Image version (e.g. `9`, `9.5`, `4.19`) — used for auto-naming |
+| `IMAGE_NAME` | String | — | Override the auto-generated image name |
+| `IMAGE_URL` | String | — | URL or local agent path to the source qcow2 |
+| `IMAGE_COS_OBJECT` | String | — | COS object key of a qcow2 already in COS (alternative to `IMAGE_URL`) |
+| `IMAGE_COS_BUCKET` | String | — | COS bucket for the source qcow2 (defaults to `COS_BUCKET`) |
+| `NAMESERVER` | String | — | DNS nameserver to inject if `9.9.9.9` is unreachable from the build agent |
+| `BUILD` | Boolean | `true` | Convert qcow2 → OVA (auto-skipped for rhcos) |
+| `UPLOAD` | Boolean | `true` | Upload OVA to COS |
+| `IMPORT_PVS` | Boolean | `true` | Import from COS into PowerVS |
+| `IMPORT_POWERVC` | Boolean | `false` | Copy OVA to PowerVC node via SSH and import it |
+| `PVS_IMAGE_NAME` | String | — | Name to register in PowerVS (defaults to `IMAGE_NAME`) |
+| `PVC_IMAGE_NAME` | String | — | Name to register in PowerVC (defaults to `IMAGE_NAME`) |
+| `POWERVC_NODE` | String | — | Hostname or IP of the PowerVC management node |
+| `COS_BUCKET` | String | `ocp4-images-bucket` | COS bucket to upload OVAs into and import from |
+| `COS_BUCKET_REGION` | String | `us-south` | IBM Cloud region of the COS bucket |
+| `PVS_WORKSPACE_NAME` | String | — | PowerVS workspace name (e.g. `rdr-ocp-cicd-montreal01`) |
+| `PVS_STORAGE_TYPE` | Choice | `tier1` | PowerVS storage tier: `tier1` (NVMe) or `tier3` (SSD) |
+| `POWERVC_HOST` | String | — | PowerVC hostname or IP — no scheme or port |
+| `POWERVC_USERNAME` | String | `admin` | PowerVC username |
+| `POWERVC_PROJECT` | String | `ibm-default` | PowerVC project (OpenStack tenant) |
+| `POWERVC_STORAGE_TEMPLATE_ID` | String | — | PowerVC storage template UUID |
 
 ### Credentials required in Jenkins credential store
 
@@ -401,22 +410,6 @@ grey in the UI.
 | `rhn-username` | Red Hat subscription username (RHEL builds only) |
 | `rhn-password` | Red Hat subscription password (RHEL builds only) |
 | `powervc-password` | PowerVC user password (PowerVC imports only) |
-
-### Static config
-
-Edit the `environment {}` block in the Jenkinsfile to set your workspace-specific
-values before committing:
-
-```groovy
-PVS_WORKSPACE_NAME          = 'your-workspace-name'
-COS_BUCKET                  = 'ocp4-images-bucket'
-COS_BUCKET_REGION           = 'us-south'
-PVS_STORAGE_TYPE            = 'tier1'
-POWERVC_HOST                = 'your-powervc-host'
-POWERVC_USERNAME            = 'admin'
-POWERVC_PROJECT             = 'ibm-default'
-POWERVC_STORAGE_TEMPLATE_ID = 'your-storage-template-uuid'
-```
 
 ### PowerVC stage notes
 

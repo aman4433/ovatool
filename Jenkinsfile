@@ -19,8 +19,13 @@ pipeline {
     // ── Image identity ──────────────────────────────────────────────────────
     choice(
       name: 'DIST',
-      choices: ['centos', 'rhel', 'rhcos'],
-      description: 'Image distribution to build. rhcos skips the build stage — OVAs are prebuilt by Red Hat.'
+      choices: ['centos', 'rhel', 'rhcos', 'other'],
+      description: 'Image distribution to build. rhcos skips the build stage — OVAs are prebuilt by Red Hat. Select "other" and fill in DIST_OTHER for any unlisted distribution.'
+    )
+    string(
+      name: 'DIST_OTHER',
+      defaultValue: '',
+      description: 'Custom distribution name passed to --dist when DIST is set to "other" (e.g. ubuntu, sles).'
     )
     string(
       name: 'VERSION',
@@ -97,6 +102,52 @@ pipeline {
       defaultValue: '',
       description: 'Hostname or IP of the PowerVC management node. Required only when IMPORT_POWERVC is checked.'
     )
+
+    // ── COS config ──────────────────────────────────────────────────────────
+    string(
+      name: 'COS_BUCKET',
+      defaultValue: 'ocp4-images-bucket',
+      description: 'COS bucket to upload OVAs into and import from.'
+    )
+    string(
+      name: 'COS_BUCKET_REGION',
+      defaultValue: 'us-south',
+      description: 'IBM Cloud region of the COS bucket (e.g. us-south, eu-de, jp-tok).'
+    )
+
+    // ── PowerVS config ──────────────────────────────────────────────────────
+    string(
+      name: 'PVS_WORKSPACE_NAME',
+      defaultValue: '',
+      description: 'PowerVS workspace name to import the image into (e.g. rdr-ocp-cicd-montreal01).'
+    )
+    choice(
+      name: 'PVS_STORAGE_TYPE',
+      choices: ['tier1', 'tier3'],
+      description: 'PowerVS storage tier for the imported image. tier1 = NVMe (faster), tier3 = SSD.'
+    )
+
+    // ── PowerVC config (only needed when IMPORT_POWERVC is checked) ─────────
+    string(
+      name: 'POWERVC_HOST',
+      defaultValue: '',
+      description: 'PowerVC hostname or IP — no scheme or port (e.g. mypowervc.example.com). Required only when IMPORT_POWERVC is checked.'
+    )
+    string(
+      name: 'POWERVC_USERNAME',
+      defaultValue: 'admin',
+      description: 'PowerVC username. Required only when IMPORT_POWERVC is checked.'
+    )
+    string(
+      name: 'POWERVC_PROJECT',
+      defaultValue: 'ibm-default',
+      description: 'PowerVC project (OpenStack project/tenant). Required only when IMPORT_POWERVC is checked.'
+    )
+    string(
+      name: 'POWERVC_STORAGE_TEMPLATE_ID',
+      defaultValue: '',
+      description: 'PowerVC storage template UUID. Required only when IMPORT_POWERVC is checked.'
+    )
   }
 
   environment {
@@ -108,15 +159,15 @@ pipeline {
     RHN_PASSWORD      = credentials('rhn-password')
     POWERVC_PASSWORD  = credentials('powervc-password')
 
-    // Static config — adjust for your environment
-    PVS_WORKSPACE_NAME          = 'your-workspace-name'
-    COS_BUCKET                  = 'ocp4-images-bucket'
-    COS_BUCKET_REGION           = 'us-south'
-    PVS_STORAGE_TYPE            = 'tier1'
-    POWERVC_HOST                = 'your-powervc-host'
-    POWERVC_USERNAME            = 'admin'
-    POWERVC_PROJECT             = 'ibm-default'
-    POWERVC_STORAGE_TEMPLATE_ID = 'your-storage-template-uuid'
+    // Promote params to env vars so ovatool picks them up automatically
+    COS_BUCKET                  = "${params.COS_BUCKET}"
+    COS_BUCKET_REGION           = "${params.COS_BUCKET_REGION}"
+    PVS_WORKSPACE_NAME          = "${params.PVS_WORKSPACE_NAME}"
+    PVS_STORAGE_TYPE            = "${params.PVS_STORAGE_TYPE}"
+    POWERVC_HOST                = "${params.POWERVC_HOST}"
+    POWERVC_USERNAME            = "${params.POWERVC_USERNAME}"
+    POWERVC_PROJECT             = "${params.POWERVC_PROJECT}"
+    POWERVC_STORAGE_TEMPLATE_ID = "${params.POWERVC_STORAGE_TEMPLATE_ID}"
   }
 
   stages {
@@ -134,11 +185,15 @@ pipeline {
 
     stage('Build') {
       // Skipped automatically for rhcos (prebuilt OVAs) or if BUILD is unchecked
-      when { expression { return params.BUILD && params.DIST != 'rhcos' } }
+      when { expression {
+        def effectiveDist = (params.DIST == 'other') ? params.DIST_OTHER : params.DIST
+        return params.BUILD && effectiveDist != 'rhcos'
+      }}
       steps {
         sh """
+          DIST_VAL='${params.DIST == 'other' ? params.DIST_OTHER : params.DIST}'
           ovatool build \
-            --dist '${params.DIST}' \
+            --dist "\$DIST_VAL" \
             ${params.IMAGE_URL        ? "--image-url '${params.IMAGE_URL}'"                   : ''} \
             ${params.IMAGE_COS_OBJECT ? "--image-cos-object '${params.IMAGE_COS_OBJECT}'"     : ''} \
             ${params.IMAGE_COS_BUCKET ? "--image-cos-bucket '${params.IMAGE_COS_BUCKET}'"     : ''} \
@@ -177,7 +232,8 @@ pipeline {
           OVA=\$(ls *.ova.gz | head -1)
           scp \$OVA root@${params.POWERVC_NODE}:/root/
           ssh root@${params.POWERVC_NODE} \
-            "/root/ovatool import --target powervc \
+            "POWERVC_PASSWORD='\$POWERVC_PASSWORD' \
+             /root/ovatool import --target powervc \
               --image-path /root/\$OVA \
               --pvc-image-name '${params.PVC_IMAGE_NAME ?: params.IMAGE_NAME}'"
         """
