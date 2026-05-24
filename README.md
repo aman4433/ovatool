@@ -367,50 +367,63 @@ ovatool --log-file run-2025-05-23.log run ...
 
 ## Jenkins Integration
 
-Because ovatool is a self-contained binary, Jenkins just needs to download it
-and run it. Credentials are injected via Jenkins Credential Bindings as
-environment variables — the same names as the `.env` file, no code changes needed.
+The repo ships a ready-to-use parameterized `Jenkinsfile`. Copy it into your
+Jenkins job (or use "Pipeline script from SCM") and trigger **Build with
+Parameters** — check only the stages you need; unchecked stages are shown as
+grey in the UI.
+
+### Parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `DIST` | Choice | `centos`, `rhel`, or `rhcos` |
+| `VERSION` | String | Image version (e.g. `9`, `9.5`, `4.19`) — used for auto-naming |
+| `IMAGE_NAME` | String | Override the auto-generated image name |
+| `IMAGE_URL` | String | URL or local agent path to the source qcow2 |
+| `IMAGE_COS_OBJECT` | String | COS object key of a qcow2 already in COS (alternative to `IMAGE_URL`) |
+| `IMAGE_COS_BUCKET` | String | COS bucket for the source qcow2 (defaults to `COS_BUCKET`) |
+| `NAMESERVER` | String | DNS nameserver to inject if `9.9.9.9` is unreachable from the build agent |
+| `BUILD` | Boolean | Convert qcow2 → OVA (auto-skipped for rhcos) |
+| `UPLOAD` | Boolean | Upload OVA to COS |
+| `IMPORT_PVS` | Boolean | Import from COS into PowerVS |
+| `IMPORT_POWERVC` | Boolean | Copy OVA to PowerVC node via SSH and import it |
+| `PVS_IMAGE_NAME` | String | Name to register in PowerVS (defaults to `IMAGE_NAME`) |
+| `PVC_IMAGE_NAME` | String | Name to register in PowerVC (defaults to `IMAGE_NAME`) |
+| `POWERVC_NODE` | String | Hostname or IP of the PowerVC management node |
+
+### Credentials required in Jenkins credential store
+
+| Credential ID | Used for |
+|---|---|
+| `ibmcloud-api-key` | IBM Cloud API key |
+| `cos-access-key` | COS HMAC access key |
+| `cos-secret-key` | COS HMAC secret key |
+| `rhn-username` | Red Hat subscription username (RHEL builds only) |
+| `rhn-password` | Red Hat subscription password (RHEL builds only) |
+| `powervc-password` | PowerVC user password (PowerVC imports only) |
+
+### Static config
+
+Edit the `environment {}` block in the Jenkinsfile to set your workspace-specific
+values before committing:
 
 ```groovy
-pipeline {
-  agent { label 'ppc64le' }
-  environment {
-    IBMCLOUD_API_KEY  = credentials('ibmcloud-api-key')
-    COS_ACCESS_KEY    = credentials('cos-access-key')
-    COS_SECRET_KEY    = credentials('cos-secret-key')
-    PVS_WORKSPACE_NAME = 'rdr-ocp-cicd-montreal01'
-    COS_BUCKET        = 'ocp4-images-bucket'
-    COS_BUCKET_REGION = 'us-south'
-    PVS_STORAGE_TYPE  = 'tier1'
-    PVSADM_VERSION    = 'v0.1.15'
-  }
-  stages {
-    stage('Install ovatool') {
-      steps {
-        sh '''
-          curl -sL https://github.com/ppc64le-cloud/ovatool/releases/download/v0.1.0/ovatool-linux-ppc64le \
-            -o /usr/local/bin/ovatool
-          chmod +x /usr/local/bin/ovatool
-          ovatool init --install-deps --install-pvsadm
-        '''
-      }
-    }
-    stage('Build & Upload') {
-      steps {
-        sh '''
-          ovatool run \
-            --dist centos \
-            --version 9 \
-            --image-url ./CentOS-Stream-GenericCloud-9-latest.ppc64le.qcow2 \
-            --target build,upload \
-            --json-logs \
-            --log-file ovatool-run.log
-        '''
-      }
-    }
-  }
-}
+PVS_WORKSPACE_NAME          = 'your-workspace-name'
+COS_BUCKET                  = 'ocp4-images-bucket'
+COS_BUCKET_REGION           = 'us-south'
+PVS_STORAGE_TYPE            = 'tier1'
+POWERVC_HOST                = 'your-powervc-host'
+POWERVC_USERNAME            = 'admin'
+POWERVC_PROJECT             = 'ibm-default'
+POWERVC_STORAGE_TEMPLATE_ID = 'your-storage-template-uuid'
 ```
+
+### PowerVC stage notes
+
+The `Import PowerVC` stage runs ovatool **on the PowerVC management node** via
+SSH. It copies the OVA with `scp` and then runs `ovatool import --target powervc`
+remotely. The ovatool binary must be present on the PowerVC node at `/root/ovatool`
+before the pipeline runs (copy it once manually or add a provisioning step).
 
 ---
 
@@ -433,6 +446,7 @@ ovatool/
 │   ├── pvsadm/          # pvsadm binary wrapper
 │   ├── powervc/         # powervc-image binary wrapper
 │   └── cos/             # COS preflight checks
+├── Jenkinsfile          # parameterized Jenkins pipeline
 ├── .env.template        # committed — fill and rename to .env
 ├── .gitignore
 ├── go.mod
