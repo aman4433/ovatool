@@ -43,7 +43,6 @@ func (c *Client) Import(opts ImportOptions) error {
 	}
 
 	args := []string{
-		"create",
 		"--project", c.project,
 		"import",
 		"-n", opts.ImageName,
