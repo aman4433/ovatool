@@ -28,8 +28,13 @@ var (
 	runOSType         string
 	runPublicBucket   bool
 	runObject         string
-	runPrepTemplate   string
-	runNameserver     string
+	runPrepTemplate        string
+	runNameserver          string
+	runImageCOSObject      string
+	runImageCOSBucket      string
+	runImageCOSRegion      string
+	runImageCOSAccessKey   string
+	runImageCOSSecretKey   string
 )
 
 var runCmd = &cobra.Command{
@@ -96,6 +101,11 @@ func init() {
 	runCmd.Flags().StringVar(&runObject, "object", "", "COS object name (for import-only runs where image is already in COS)")
 	runCmd.Flags().StringVar(&runPrepTemplate, "prep-template", "", "path to a custom pvsadm prep script template (build stage)")
 	runCmd.Flags().StringVar(&runNameserver, "nameserver", "", "DNS nameserver to inject into the prep template (replaces hardcoded 9.9.9.9)")
+	runCmd.Flags().StringVar(&runImageCOSObject, "image-cos-object", "", "COS object key of the source qcow2 image (alternative to --image-url)")
+	runCmd.Flags().StringVar(&runImageCOSBucket, "image-cos-bucket", "", "COS bucket containing the source qcow2 (overrides COS_BUCKET)")
+	runCmd.Flags().StringVar(&runImageCOSRegion, "image-cos-region", "", "COS region of the source bucket (overrides COS_BUCKET_REGION)")
+	runCmd.Flags().StringVar(&runImageCOSAccessKey, "image-cos-access-key", "", "COS access key for source bucket (overrides COS_ACCESS_KEY)")
+	runCmd.Flags().StringVar(&runImageCOSSecretKey, "image-cos-secret-key", "", "COS secret key for source bucket (overrides COS_SECRET_KEY)")
 
 	runCmd.MarkFlagRequired("dist")
 }
@@ -143,6 +153,11 @@ func runPipeline() error {
 			buildSkipOSPass = runSkipOSPass
 			buildPrepTemplate = runPrepTemplate
 			buildNameserver = runNameserver
+			buildImageCOSObject = runImageCOSObject
+			buildImageCOSBucket = runImageCOSBucket
+			buildImageCOSRegion = runImageCOSRegion
+			buildImageCOSAccessKey = runImageCOSAccessKey
+			buildImageCOSSecretKey = runImageCOSSecretKey
 
 			if err := runBuild(); err != nil {
 				return fmt.Errorf("build stage: %w", err)

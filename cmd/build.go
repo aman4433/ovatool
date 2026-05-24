@@ -2,28 +2,36 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
+	"github.com/ppc64le-cloud/ovatool/pkg/cos"
 	"github.com/ppc64le-cloud/ovatool/pkg/deps"
 	img "github.com/ppc64le-cloud/ovatool/pkg/image"
 	"github.com/ppc64le-cloud/ovatool/pkg/pvsadm"
 )
 
 var (
-	buildDist         string
-	buildImageURL     string
-	buildImageName    string
-	buildImageSize    int
-	buildTargetDisk   int
-	buildRHNUser      string
-	buildRHNPass      string
-	buildOSPass       string
-	buildSkipOSPass   bool
-	buildVersion      string
-	buildPrepTemplate string
-	buildNameserver   string
+	buildDist             string
+	buildImageURL         string
+	buildImageName        string
+	buildImageSize        int
+	buildTargetDisk       int
+	buildRHNUser          string
+	buildRHNPass          string
+	buildOSPass           string
+	buildSkipOSPass       bool
+	buildVersion          string
+	buildPrepTemplate     string
+	buildNameserver       string
+	buildImageCOSObject   string
+	buildImageCOSBucket   string
+	buildImageCOSRegion   string
+	buildImageCOSAccessKey string
+	buildImageCOSSecretKey string
 )
 
 var buildCmd = &cobra.Command{
@@ -64,14 +72,53 @@ func init() {
 	buildCmd.Flags().BoolVar(&buildSkipOSPass, "skip-os-password", false, "do not set a root password (cloud/key-based access only)")
 	buildCmd.Flags().StringVar(&buildPrepTemplate, "prep-template", "", "path to a custom pvsadm prep script template")
 	buildCmd.Flags().StringVar(&buildNameserver, "nameserver", "", "DNS nameserver to inject into the prep template (replaces hardcoded 9.9.9.9)")
+	buildCmd.Flags().StringVar(&buildImageCOSObject, "image-cos-object", "", "COS object key of the source qcow2 image (alternative to --image-url)")
+	buildCmd.Flags().StringVar(&buildImageCOSBucket, "image-cos-bucket", "", "COS bucket containing the source qcow2 (overrides COS_BUCKET)")
+	buildCmd.Flags().StringVar(&buildImageCOSRegion, "image-cos-region", "", "COS region of the source bucket (overrides COS_BUCKET_REGION)")
+	buildCmd.Flags().StringVar(&buildImageCOSAccessKey, "image-cos-access-key", "", "COS access key for source bucket (overrides COS_ACCESS_KEY)")
+	buildCmd.Flags().StringVar(&buildImageCOSSecretKey, "image-cos-secret-key", "", "COS secret key for source bucket (overrides COS_SECRET_KEY)")
 
 	buildCmd.MarkFlagRequired("dist")
-	buildCmd.MarkFlagRequired("image-url")
 }
 
 func runBuild() error {
 	if missing := deps.Missing(deps.BuildDeps); len(missing) > 0 {
 		return deps.PreflightError(missing)
+	}
+
+	// Validate image source — exactly one of --image-url or --image-cos-object required.
+	if buildImageURL == "" && buildImageCOSObject == "" {
+		return fmt.Errorf("provide --image-url (local path or HTTPS URL) or --image-cos-object (COS object key)")
+	}
+	if buildImageURL != "" && buildImageCOSObject != "" {
+		return fmt.Errorf("--image-url and --image-cos-object are mutually exclusive")
+	}
+
+	// Download source qcow2 from COS if --image-cos-object was given.
+	if buildImageCOSObject != "" {
+		bucket := coalesce(buildImageCOSBucket, cfg.COSBucket)
+		region := coalesce(buildImageCOSRegion, cfg.COSBucketRegion)
+		accessKey := coalesce(buildImageCOSAccessKey, cfg.COSAccessKey)
+		secretKey := coalesce(buildImageCOSSecretKey, cfg.COSSecretKey)
+
+		cosClient, err := cos.NewClient(logger, bucket, region, accessKey, secretKey)
+		if err != nil {
+			cosClient, err = cos.NewClientFromAPIKey(logger, bucket, region, cfg.IBMCloudAPIKey)
+			if err != nil {
+				return fmt.Errorf("initialising COS client for image download: %w", err)
+			}
+		}
+
+		destPath := filepath.Join(cfg.TempDir, filepath.Base(buildImageCOSObject))
+		if err := cosClient.Download(buildImageCOSObject, destPath); err != nil {
+			return err
+		}
+		defer func() {
+			logger.Info("removing downloaded source image", zap.String("path", destPath))
+			os.Remove(destPath)
+		}()
+		buildImageURL = destPath
+		logger.Info("source image downloaded from COS", zap.String("path", destPath))
 	}
 
 	dist, err := img.ParseDist(buildDist)

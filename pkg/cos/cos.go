@@ -2,6 +2,8 @@ package cos
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"strings"
 
 	"github.com/IBM/ibm-cos-sdk-go/aws"
@@ -156,4 +158,36 @@ func (c *Client) ListObjects(prefix string) ([]string, error) {
 		return nil, fmt.Errorf("listing COS objects: %w", err)
 	}
 	return keys, nil
+}
+
+// Download streams an object from COS to a local file path.
+func (c *Client) Download(objectKey, destPath string) error {
+	c.log.Info("downloading from COS",
+		zap.String("bucket", c.bucket),
+		zap.String("object", objectKey),
+		zap.String("dest", destPath),
+	)
+
+	out, err := c.s3.GetObject(&cosaws.GetObjectInput{
+		Bucket: aws.String(c.bucket),
+		Key:    aws.String(objectKey),
+	})
+	if err != nil {
+		return fmt.Errorf("GetObject %s/%s: %w", c.bucket, objectKey, err)
+	}
+	defer out.Body.Close()
+
+	f, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("creating destination file %s: %w", destPath, err)
+	}
+	defer f.Close()
+
+	if _, err := io.Copy(f, out.Body); err != nil {
+		os.Remove(destPath)
+		return fmt.Errorf("writing download to %s: %w", destPath, err)
+	}
+
+	c.log.Info("download complete", zap.String("dest", destPath))
+	return nil
 }
